@@ -55,7 +55,7 @@ async def post_shutdown(app) -> None:
 def main() -> None:
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     db_url = os.environ["DATABASE_URL"]
-    forum_id = int(os.getenv("TELEGRAM_FORUM_ID", "0"))
+    forum_id = int(os.getenv("TELEGRAM_FORUM_ID") or "0")
 
     if not forum_id:
         print(

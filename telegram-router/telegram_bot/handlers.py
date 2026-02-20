@@ -18,7 +18,7 @@ CF_WORKER_URL = os.getenv("CF_WORKER_URL", "https://openclaw-watchdog.eric-c5f.w
 CF_ADMIN_TOKEN = os.getenv("CF_ADMIN_TOKEN", "")
 
 INBOX_DIR = Path(os.getenv("INBOX_DIR", Path.home() / ".claude" / "inbox"))
-FORUM_ID = int(os.getenv("TELEGRAM_FORUM_ID", "0"))
+FORUM_ID = int(os.getenv("TELEGRAM_FORUM_ID") or "0")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
