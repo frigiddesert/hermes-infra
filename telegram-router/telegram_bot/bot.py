@@ -23,7 +23,7 @@ load_dotenv()
 
 from .handlers import (
     handle_approve, handle_chatid, handle_message, handle_models,
-    handle_models_free, handle_stop, handle_topics,
+    handle_models_free, handle_model_pick_callback, handle_stop, handle_topics,
     handle_vps_status, handle_vps_restart,
 )
 from .project_router import ProjectRouter
@@ -88,8 +88,9 @@ def main() -> None:
     app.add_handler(CommandHandler("status",      handle_vps_status))
     app.add_handler(CommandHandler("restart",     handle_vps_restart))
 
-    # Inline button callbacks (approve/deny from permission relay)
+    # Inline button callbacks
     app.add_handler(CallbackQueryHandler(handle_approve, pattern=r"^(approve|deny):"))
+    app.add_handler(CallbackQueryHandler(handle_model_pick_callback, pattern=r"^mpick:"))
 
     # All other messages — route to tmux
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

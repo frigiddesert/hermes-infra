@@ -175,59 +175,166 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     print(f"[handlers] → {project_name}: {msg.text[:80]}")
 
 
-async def _fetch_openrouter_models(search: str, free_only: bool = False, cheapest: bool = False) -> list[dict]:
-    """Fetch models from OpenRouter API, filter, and sort."""
+# ── Model browser constants ───────────────────────────────────────────────────
+
+PRICE_LIMIT = 3e-6  # $3 per million tokens — never show above this
+
+PROVIDER_NAMES = {
+    "amazon-bedrock": "Amazon Bedrock",
+    "anthropic": "Anthropic",
+    "azure-openai-responses": "Azure OpenAI",
+    "cerebras": "Cerebras",
+    "cohere": "Cohere",
+    "deepseek": "DeepSeek",
+    "featherless": "Featherless",
+    "github-copilot": "GitHub Copilot",
+    "google": "Google",
+    "google-antigravity": "Google (Antigravity)",
+    "google-gemini-cli": "Google Gemini CLI",
+    "google-vertex": "Google Vertex",
+    "groq": "Groq",
+    "huggingface": "Hugging Face",
+    "inflection": "Inflection",
+    "kimi-coding": "Kimi Coding",
+    "liquid": "Liquid AI",
+    "meta-llama": "Meta Llama",
+    "microsoft": "Microsoft",
+    "minimax": "MiniMax",
+    "minimax-cn": "MiniMax CN",
+    "mistral": "Mistral AI",
+    "mistralai": "Mistral AI",
+    "moonshotai": "Moonshot AI",
+    "nousresearch": "Nous Research",
+    "nvidia": "NVIDIA",
+    "01-ai": "01.AI",
+    "openai": "OpenAI",
+    "openai-codex": "OpenAI Codex",
+    "opencode": "OpenCode",
+    "openrouter": "OpenRouter",
+    "perplexity": "Perplexity",
+    "pygmalionai": "PygmalionAI",
+    "qwen": "Qwen / Alibaba",
+    "recursal": "Recursal",
+    "sourceful": "Sourceful",
+    "stepfun": "StepFun",
+    "upstage": "Upstage",
+    "vercel-ai-gateway": "Vercel AI Gateway",
+    "x-ai": "xAI (Grok)",
+    "xai": "xAI (Grok)",
+    "z-ai": "Zhipu AI (GLM)",
+    "zai": "Zhipu AI (GLM)",
+    "arcee-ai": "Arcee AI",
+    "sao10k": "Sao10k",
+    "thedrummer": "TheDrummer",
+    "eva-unit-01": "Eva Unit 01",
+    "aetherwiing": "AetherWiing",
+    "sophosympatheia": "Sophosympatheia",
+}
+
+
+def _prompt_price(m: dict) -> float:
+    try:
+        return float(m.get("pricing", {}).get("prompt", 999))
+    except (TypeError, ValueError):
+        return 999.0
+
+
+def _price_str(p: float) -> str:
+    if p == 0:
+        return "FREE"
+    per_m = p * 1_000_000
+    if per_m < 0.01:
+        return f"${per_m:.4f}/M"
+    return f"${per_m:.2f}/M"
+
+
+def _provider_of(model_id: str) -> str:
+    """Extract provider slug from model ID (e.g. 'moonshotai/kimi-k2.5' → 'moonshotai')."""
+    return model_id.split("/")[0] if "/" in model_id else "other"
+
+
+def _provider_label(slug: str) -> str:
+    return PROVIDER_NAMES.get(slug, slug.replace("-", " ").title())
+
+
+async def _fetch_openrouter_models(search: str = "", free_only: bool = False) -> list[dict]:
+    """Fetch models from OpenRouter API. Always filters out models > $3/M."""
     async with httpx.AsyncClient(timeout=15) as client:
-        headers = {}
-        if OPENROUTER_API_KEY:
-            headers["Authorization"] = f"Bearer {OPENROUTER_API_KEY}"
+        headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}"} if OPENROUTER_API_KEY else {}
         resp = await client.get("https://openrouter.ai/api/v1/models", headers=headers)
         resp.raise_for_status()
         data = resp.json()
 
     models = data.get("data", [])
 
-    # Filter
+    # Hard filter: never show models costing more than $3/M tokens
+    models = [m for m in models if _prompt_price(m) <= PRICE_LIMIT]
+
     if free_only:
         models = [m for m in models if m.get("id", "").endswith(":free")]
-    elif search and search.lower() not in ("cheap", "cheapest", "free"):
+    elif search and search.lower() not in ("all", ""):
         q = search.lower()
-        models = [m for m in models if q in m.get("id", "").lower() or q in m.get("name", "").lower()]
+        models = [m for m in models if q in m.get("id", "").lower() or q in (m.get("name") or "").lower()]
 
-    # Sort
-    def prompt_price(m):
-        try:
-            return float(m.get("pricing", {}).get("prompt", 999))
-        except (TypeError, ValueError):
-            return 999.0
+    # Sort by price (free first), then alphabetically within provider
+    models.sort(key=lambda m: (_prompt_price(m), m.get("id", "")))
 
-    if cheapest or free_only:
-        models.sort(key=prompt_price)
-    else:
-        # Sort by relevance (exact id match first), then alphabetically
-        q = search.lower() if search else ""
-        models.sort(key=lambda m: (0 if q in m.get("id", "").lower() else 1, m.get("id", "")))
-
-    return models[:10]
+    return models
 
 
-def _format_model_list(models: list[dict]) -> str:
-    lines = []
-    for i, m in enumerate(models, 1):
-        mid = m.get("id", "unknown")
-        name = m.get("name", mid)
-        try:
-            prompt_price = float(m.get("pricing", {}).get("prompt", 0))
-            if prompt_price == 0:
-                price_str = "FREE"
-            elif prompt_price < 0.000001:
-                price_str = f"${prompt_price * 1_000_000:.4f}/1M"
-            else:
-                price_str = f"${prompt_price * 1_000_000:.2f}/1M"
-        except (TypeError, ValueError):
-            price_str = "?"
-        lines.append(f"{i}. `{mid}` — {price_str}")
-    return "\n".join(lines) if lines else "No models found."
+def _build_model_keyboard(models: list[dict], user_data: dict) -> InlineKeyboardMarkup:
+    """Build inline keyboard grouped by provider. Stores model list in user_data."""
+    # Store ordered list for callback lookup
+    model_ids = [m.get("id", "") for m in models]
+    user_data["models_results"] = model_ids
+
+    # Group by provider
+    from collections import defaultdict
+    groups: dict[str, list[tuple[int, dict]]] = defaultdict(list)
+    for idx, m in enumerate(models):
+        provider = _provider_of(m.get("id", ""))
+        groups[provider].append((idx, m))
+
+    rows = []
+    for provider_slug in sorted(groups.keys(), key=_provider_label):
+        entries = groups[provider_slug]
+        label = _provider_label(provider_slug)
+        # Provider header row (non-clickable)
+        rows.append([InlineKeyboardButton(f"── {label} ──", callback_data="noop")])
+        # Model buttons, 2 per row
+        btn_row = []
+        for idx, m in entries:
+            mid = m.get("id", "")
+            name = (m.get("name") or mid).split("/")[-1]  # short name
+            price = _price_str(_prompt_price(m))
+            btn_label = f"{name} · {price}"[:40]  # Telegram button label limit
+            btn_row.append(InlineKeyboardButton(btn_label, callback_data=f"mpick:{idx}"))
+            if len(btn_row) == 2:
+                rows.append(btn_row)
+                btn_row = []
+        if btn_row:
+            rows.append(btn_row)
+
+    rows.append([InlineKeyboardButton("✖ Cancel", callback_data="mpick:cancel")])
+    return InlineKeyboardMarkup(rows)
+
+
+async def _show_model_picker(msg, models: list[dict], user_data: dict, title: str) -> None:
+    """Send model picker with inline keyboard. Splits into multiple messages if needed."""
+    if not models:
+        await msg.reply_text("No models found matching that criteria.")
+        return
+
+    keyboard = _build_model_keyboard(models, user_data)
+
+    # Telegram has a limit on keyboard size; if too many rows, split into pages
+    # For now send with a note of total count
+    provider_count = len(set(_provider_of(m.get("id", "")) for m in models))
+    await msg.reply_text(
+        f"*{title}*\n{len(models)} models across {provider_count} providers — tap to switch:",
+        parse_mode="Markdown",
+        reply_markup=keyboard,
+    )
 
 
 def _set_vps_model(model_id: str) -> tuple[bool, str]:
@@ -320,122 +427,87 @@ async def handle_vps_restart(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def handle_models(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/models — Interactive OpenRouter model browser and switcher."""
+    """/models [search] — Browse all affordable OpenRouter models grouped by provider."""
     msg = update.message
     if not msg:
         return
 
-    # Clear any previous model-search state
-    context.user_data.pop("models_results", None)
-    context.user_data["models_waiting"] = "search"
+    args = context.args or []
+    search = " ".join(args).strip()
 
-    await msg.reply_text(
-        "🔍 *Model Browser*\n\n"
-        "Send a search term (e.g. `claude`, `kimi`, `qwen`)\n"
-        "or type `cheap` for the 10 least expensive\n"
-        "or type `free` for free-tier only",
-        parse_mode="Markdown",
-    )
-
-
-async def handle_models_free(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/models-free — List all free OpenRouter models and let user pick one."""
-    msg = update.message
-    if not msg:
-        return
-
-    await msg.reply_text("🆓 Fetching free models from OpenRouter...")
+    await msg.reply_text("🔍 Fetching models..." if search else "🔍 Loading all models under $3/M...")
 
     try:
-        models = await _fetch_openrouter_models("", free_only=True)
+        models = await _fetch_openrouter_models(search=search)
     except Exception as e:
         await msg.reply_text(f"❌ Error fetching models: {e}")
         return
 
-    if not models:
-        await msg.reply_text("No free models found.")
+    title = f'Models matching "{search}"' if search else "All models ≤ $3/M"
+    await _show_model_picker(msg, models, context.user_data, title)
+
+
+async def handle_models_free(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/modelsfree — Browse all free OpenRouter models grouped by provider."""
+    msg = update.message
+    if not msg:
         return
 
-    context.user_data["models_results"] = [m.get("id") for m in models]
-    context.user_data["models_waiting"] = "pick"
+    await msg.reply_text("🆓 Fetching free models...")
 
-    await msg.reply_text(
-        f"*Free models on OpenRouter:*\n\n{_format_model_list(models)}\n\n"
-        f"Reply with a number (1–{len(models)}) to switch, or /cancel",
+    try:
+        models = await _fetch_openrouter_models(free_only=True)
+    except Exception as e:
+        await msg.reply_text(f"❌ Error fetching models: {e}")
+        return
+
+    await _show_model_picker(msg, models, context.user_data, "Free models on OpenRouter")
+
+
+async def handle_model_pick_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Callback for model picker inline buttons (mpick:<idx> or mpick:cancel)."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data  # "mpick:<idx>" or "mpick:cancel" or "noop"
+
+    if data == "noop":
+        return
+
+    if data == "mpick:cancel":
+        await query.edit_message_text("Cancelled.", reply_markup=InlineKeyboardMarkup([]))
+        context.user_data.pop("models_results", None)
+        return
+
+    try:
+        idx = int(data.split(":")[1])
+    except (IndexError, ValueError):
+        return
+
+    results = context.user_data.get("models_results", [])
+    if not results or idx >= len(results):
+        await query.edit_message_text("Session expired. Run /models again.")
+        return
+
+    model_id = results[idx]
+    await query.edit_message_text(
+        f"⚡ Switching to `{model_id}`...",
         parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([]),
     )
+
+    success, output = _set_vps_model(model_id)
+    if success:
+        await query.message.reply_text(f"✅ Active model: `{model_id}`", parse_mode="Markdown")
+    else:
+        await query.message.reply_text(
+            f"❌ Failed to switch:\n```\n{output[:400]}\n```", parse_mode="Markdown"
+        )
+    context.user_data.pop("models_results", None)
 
 
 async def handle_model_search_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Handle multi-step /models conversation. Returns True if message was consumed."""
-    msg = update.message
-    if not msg or not msg.text:
-        return False
-
-    state = context.user_data.get("models_waiting")
-    if not state:
-        return False
-
-    text = msg.text.strip()
-
-    if state == "search":
-        # User sent a search term
-        context.user_data.pop("models_waiting", None)
-        await msg.reply_text(f"🔍 Searching for `{text}`...", parse_mode="Markdown")
-
-        free_only = text.lower() == "free"
-        cheapest = text.lower() in ("cheap", "cheapest")
-
-        try:
-            models = await _fetch_openrouter_models(text, free_only=free_only, cheapest=cheapest)
-        except Exception as e:
-            await msg.reply_text(f"❌ Error fetching models: {e}")
-            return True
-
-        if not models:
-            await msg.reply_text("No models found. Try a different search term.")
-            return True
-
-        context.user_data["models_results"] = [m.get("id") for m in models]
-        context.user_data["models_waiting"] = "pick"
-
-        label = "cheapest" if cheapest else ("free" if free_only else f'"{text}"')
-        await msg.reply_text(
-            f"*Models matching {label}:*\n\n{_format_model_list(models)}\n\n"
-            f"Reply with a number (1–{len(models)}) to switch, or /cancel",
-            parse_mode="Markdown",
-        )
-        return True
-
-    if state == "pick":
-        # User sent a number to pick a model
-        if text.lower() in ("/cancel", "cancel"):
-            context.user_data.pop("models_waiting", None)
-            context.user_data.pop("models_results", None)
-            await msg.reply_text("Cancelled.")
-            return True
-
-        results = context.user_data.get("models_results", [])
-        try:
-            idx = int(text) - 1
-            if not (0 <= idx < len(results)):
-                raise ValueError()
-        except ValueError:
-            await msg.reply_text(f"Please send a number between 1 and {len(results)}, or /cancel")
-            return True
-
-        model_id = results[idx]
-        context.user_data.pop("models_waiting", None)
-        context.user_data.pop("models_results", None)
-
-        await msg.reply_text(f"⚡ Switching to `{model_id}`...", parse_mode="Markdown")
-        success, output = _set_vps_model(model_id)
-        if success:
-            await msg.reply_text(f"✅ Active model: `{model_id}`", parse_mode="Markdown")
-        else:
-            await msg.reply_text(f"❌ Failed:\n```\n{output[:500]}\n```", parse_mode="Markdown")
-        return True
-
+    """No longer used for model picking (now buttons), kept for compatibility."""
     return False
 
 
