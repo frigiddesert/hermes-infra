@@ -755,19 +755,128 @@ ssh $SSH_ALIAS "openclaw agent --channel telegram --to $TELEGRAM_OPERATOR_ID \
 
 ---
 
-## WHAT WAS NOT COVERED (Future Work)
+## PHASE 14 — Resilience & Self-Repair (Cloudflare Worker)
 
-These are in the backlog but not part of this initial setup:
+### 14.1 — Install wrangler
+```bash
+npm install -g wrangler --prefix ~/.local
+~/.local/bin/wrangler login
+```
+
+### 14.2 — Create KV namespace and deploy CF Worker
+```bash
+cd ~/code/openclaw/cloudflare-worker
+~/.local/bin/wrangler kv namespace create openclaw-watchdog
+# Copy the id into wrangler.toml → kv_namespaces[0].id
+~/.local/bin/wrangler deploy
+```
+
+### 14.3 — Set secrets on CF Worker
+```bash
+# Generate secrets
+WATCHDOG_SECRET=$(openssl rand -hex 24)
+ADMIN_TOKEN=$(openssl rand -hex 24)
+
+echo $WATCHDOG_SECRET | ~/.local/bin/wrangler secret put WATCHDOG_SECRET
+echo $ADMIN_TOKEN | ~/.local/bin/wrangler secret put ADMIN_TOKEN
+echo "$TELEGRAM_BOT_TOKEN" | ~/.local/bin/wrangler secret put TELEGRAM_BOT_TOKEN
+echo "$TELEGRAM_OPERATOR_ID" | ~/.local/bin/wrangler secret put TELEGRAM_USER_ID
+```
+
+### 14.4 — Deploy VPS scripts
+```bash
+CF_WORKER_URL=https://openclaw-watchdog.YOUR_SUBDOMAIN.workers.dev
+./scripts/deploy-resilience.sh   # deploys heartbeat.sh + health-watchdog.sh + cron
+```
+
+### 14.5 — Deploy additional cron scripts
+```bash
+scp vps/scripts/remind.sh vps/scripts/add-reminder.sh \
+    vps/scripts/set-model.sh vps/scripts/reddit-scanner.sh \
+    vps/scripts/free-model-digest.sh vps/scripts/memory-summarizer.sh \
+    vps/scripts/cron-run.sh $SSH_ALIAS:/root/scripts/
+ssh $SSH_ALIAS 'chmod +x /root/scripts/*.sh'
+
+# Add cron jobs (run on VPS)
+ssh $SSH_ALIAS crontab -e
+# Add:
+# 0 9 */2 * * /root/scripts/cron-run.sh reddit-scanner /root/scripts/reddit-scanner.sh >> /var/log/openclaw-reddit.log 2>&1
+# 0 7 * * * /root/scripts/cron-run.sh free-model-digest /root/scripts/free-model-digest.sh >> /var/log/openclaw-models.log 2>&1
+# 0 4 * * 0 /root/scripts/cron-run.sh memory-summarizer /root/scripts/memory-summarizer.sh >> /var/log/openclaw-memory.log 2>&1
+```
+
+### 14.6 — Install ClawGuard
+```bash
+ssh $SSH_ALIAS 'npm install -g clawguard'
+```
+
+### 14.7 — Verify
+```bash
+# Public health endpoint (bookmark this on mobile)
+curl https://openclaw-watchdog.YOUR_SUBDOMAIN.workers.dev/health
+
+# Mobile dashboard (requires admin token for actions)
+# Open in browser: https://openclaw-watchdog.YOUR_SUBDOMAIN.workers.dev/
+```
+
+---
+
+## PHASE 15 — Telegram Bot Commands (telegram-router)
+
+### 15.1 — Configure .env
+```bash
+cd ~/code/openclaw/telegram-router
+cp .env.example .env
+# Fill in:
+# TELEGRAM_FORUM_ID   — get by running /chatid in your Telegram forum group
+# CF_WORKER_URL       — your CF Worker URL
+# CF_ADMIN_TOKEN      — the ADMIN_TOKEN secret you generated in phase 14
+```
+
+### 15.2 — Install and start
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+python -m telegram_bot.bot   # foreground test
+
+# Or install as systemd user service:
+./setup.sh
+systemctl --user start claude-telegram-bot
+```
+
+### 15.3 — Available commands in Telegram
+| Command | What it does |
+|---|---|
+| `/status` | Live VPS health from CF Worker |
+| `/restart [gateway\|ollama\|all]` | Queue a service restart |
+| `/models` | Browse OpenRouter models, pick by number |
+| `/models_free` | Browse free-tier models |
+| `/stop` | Interrupt current Claude session (forum topics) |
+| `/topics` | List project→topic mappings |
+
+---
+
+## PHASE 16 — Skills
+
+Deploy skill files to VPS workspace:
+```bash
+scp vps/workspace/skills/*.md $SSH_ALIAS:/root/.openclaw/workspace/skills/
+```
+
+Skills available:
+- `dev-workflow.md` — server management, service control, cron patterns
+- `travel.md` — timezone conversion, reminder scheduling
+- `finance.md` — currency conversion, expense tracking
+- `life-automation.md` — reminders, task management, memory system
+
+---
+
+## WHAT WAS NOT COVERED (Future Work)
 
 - **Gmail OAuth** — see `telegram-router/docs/OAUTH_SETUP_GUIDE.md`
 - **Microsoft/Office 365 OAuth** — same guide
-- **ClawGuard** — `npm install -g clawguard` on VPS for skill security
-- **Cron job monitoring** — deterministic job runner with Telegram notifications
-- **Free model scanner** — daily cron to fetch OpenRouter free models
-- **r/openclaw Reddit scanner** — every 2 days, highlights to Telegram
-- **Memory system upgrade** — short-term (7 days) → long-term (pgvector summaries)
-- **Custom SKILL.md files** — audit any ClawHub skills before installing
 - **GitHub Actions** — auto-sync config to VPS on push to main
+- **pgvector memory** — long-term semantic memory upgrade
 
 ---
 

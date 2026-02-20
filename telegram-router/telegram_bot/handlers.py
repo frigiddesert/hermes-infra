@@ -14,6 +14,8 @@ from .project_router import ProjectRouter
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 VPS_SSH_HOST = os.getenv("VPS_SSH_HOST", "openclaw")
+CF_WORKER_URL = os.getenv("CF_WORKER_URL", "https://openclaw-watchdog.eric-c5f.workers.dev")
+CF_ADMIN_TOKEN = os.getenv("CF_ADMIN_TOKEN", "")
 
 INBOX_DIR = Path(os.getenv("INBOX_DIR", Path.home() / ".claude" / "inbox"))
 FORUM_ID = int(os.getenv("TELEGRAM_FORUM_ID", "0"))
@@ -237,6 +239,84 @@ def _set_vps_model(model_id: str) -> tuple[bool, str]:
     if result.returncode == 0:
         return True, result.stdout.strip()
     return False, result.stderr.strip() or result.stdout.strip()
+
+
+async def handle_vps_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/status — Show live VPS health from Cloudflare Worker."""
+    msg = update.message
+    if not msg:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(f"{CF_WORKER_URL}/health")
+            data = resp.json()
+    except Exception as e:
+        await msg.reply_text(f"❌ Could not reach watchdog: {e}")
+        return
+
+    alive = data.get("alive", False)
+    age = data.get("last_seen_seconds_ago", "?")
+    svcs = data.get("services", {})
+    svc_lines = "\n".join(
+        f"{'✅' if v == 'active' else '❌'} `{k}` — {v}"
+        for k, v in svcs.items()
+    )
+    disk = data.get("disk_free_gb", "?")
+    mem = data.get("mem_free_mb", "?")
+    uptime = data.get("uptime", "?")
+    ts = data.get("timestamp", "?")
+
+    await msg.reply_text(
+        f"{'🟢' if alive else '🔴'} *VPS Status* (seen {age}s ago)\n\n"
+        f"{svc_lines}\n\n"
+        f"💾 {disk}GB free | 🧠 {mem}MB free\n"
+        f"⏱ Uptime: {uptime}",
+        parse_mode="Markdown",
+    )
+
+
+async def handle_vps_restart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/restart [service] — Queue a restart command on the VPS via Cloudflare Worker."""
+    msg = update.message
+    if not msg:
+        return
+
+    args = context.args or []
+    svc = args[0] if args else "all"
+    cmd = f"restart:{svc}"
+
+    valid = {"all", "gateway", "ollama", "postgres", "telegram-router"}
+    if svc not in valid:
+        await msg.reply_text(
+            f"Unknown service `{svc}`. Valid options:\n" +
+            "\n".join(f"  /restart {s}" for s in sorted(valid)),
+            parse_mode="Markdown",
+        )
+        return
+
+    if not CF_ADMIN_TOKEN:
+        await msg.reply_text("❌ `CF_ADMIN_TOKEN` not set in `.env`", parse_mode="Markdown")
+        return
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{CF_WORKER_URL}/command",
+                headers={"Authorization": f"Bearer {CF_ADMIN_TOKEN}"},
+                json={"command": cmd},
+            )
+            data = resp.json()
+    except Exception as e:
+        await msg.reply_text(f"❌ Could not reach watchdog: {e}")
+        return
+
+    if data.get("ok"):
+        await msg.reply_text(
+            f"⚡ Queued `{cmd}` — will run on next VPS heartbeat (≤2 min).",
+            parse_mode="Markdown",
+        )
+    else:
+        await msg.reply_text(f"❌ {data.get('error', 'Unknown error')}")
 
 
 async def handle_models(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

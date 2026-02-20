@@ -70,17 +70,16 @@ check_user_service() {
   fi
 }
 
-# System services
+# System services (run on VPS)
 check_system_service "ollama"
 check_system_service "postgresql"
 
-# User services (openclaw gateway + telegram router)
+# User services (run on VPS)
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 check_user_service "openclaw-gateway"
-check_user_service "claude-telegram-bot"
-check_user_service "claude-session-relay"
-check_user_service "claude-inbox-watcher"
-check_user_service "claude-permission-relay"
+
+# Note: claude-telegram-bot, claude-session-relay, claude-inbox-watcher,
+# claude-permission-relay run on Eric's LOCAL machine, not the VPS — do not check here.
 
 # ── Disk + memory check ───────────────────────────────────────────────────────
 disk_free_gb=$(df / --output=avail -BG | tail -1 | tr -d 'G ')

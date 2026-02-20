@@ -39,11 +39,7 @@ payload=$(cat <<EOF
   "services": {
     "ollama": "$(svc_status ollama)",
     "postgresql": "$(svc_status postgresql)",
-    "openclaw-gateway": "$(user_svc_status openclaw-gateway)",
-    "claude-telegram-bot": "$(user_svc_status claude-telegram-bot)",
-    "claude-session-relay": "$(user_svc_status claude-session-relay)",
-    "claude-inbox-watcher": "$(user_svc_status claude-inbox-watcher)",
-    "claude-permission-relay": "$(user_svc_status claude-permission-relay)"
+    "openclaw-gateway": "$(user_svc_status openclaw-gateway)"
   }
 }
 EOF
@@ -115,13 +111,11 @@ execute_command() {
       gw=$(user_svc_status openclaw-gateway)
       ol=$(svc_status ollama)
       pg=$(svc_status postgresql)
-      tb=$(user_svc_status claude-telegram-bot)
       status_icon() { [ "$1" = "active" ] && echo "✅" || echo "❌"; }
       msg="*VPS Status Report*
 $(status_icon $gw) \`openclaw-gateway\` — $gw
 $(status_icon $ol) \`ollama\` — $ol
 $(status_icon $pg) \`postgresql\` — $pg
-$(status_icon $tb) \`telegram-bot\` — $tb
 💾 Disk: ${disk}GB free | 🧠 RAM: ${mem}MB free
 ⏱ Uptime: $up"
       send_telegram "$msg"
