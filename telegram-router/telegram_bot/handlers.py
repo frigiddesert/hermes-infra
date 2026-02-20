@@ -284,6 +284,20 @@ async def _fetch_openrouter_models(search: str = "", free_only: bool = False) ->
     return models
 
 
+def _short_name(m: dict) -> str:
+    """
+    Derive a short, readable model name for button labels.
+    Uses the slug from the model ID (after '/'), strips ':free' suffix,
+    and title-cases it — ignoring the verbose API-provided name which
+    often includes redundant '(free)' suffixes.
+    """
+    mid = m.get("id", "")
+    slug = mid.split("/")[-1] if "/" in mid else mid   # e.g. "gemma-3-12b-it:free"
+    slug = slug.replace(":free", "")                   # "gemma-3-12b-it"
+    # Convert hyphens/underscores to spaces and title-case
+    return slug.replace("-", " ").replace("_", " ").title()
+
+
 def _build_model_keyboard(models: list[dict], user_data: dict) -> InlineKeyboardMarkup:
     """Build inline keyboard grouped by provider. Stores model list in user_data."""
     # Store ordered list for callback lookup
@@ -306,10 +320,12 @@ def _build_model_keyboard(models: list[dict], user_data: dict) -> InlineKeyboard
         # Model buttons, 2 per row
         btn_row = []
         for idx, m in entries:
-            mid = m.get("id", "")
-            name = (m.get("name") or mid).split("/")[-1]  # short name
-            price = _price_str(_prompt_price(m))
-            btn_label = f"{name} · {price}"[:40]  # Telegram button label limit
+            price = _prompt_price(m)
+            name = _short_name(m)
+            if price == 0:
+                btn_label = name[:55]                          # FREE — no price needed
+            else:
+                btn_label = f"{name} · {_price_str(price)}"[:55]
             btn_row.append(InlineKeyboardButton(btn_label, callback_data=f"mpick:{idx}"))
             if len(btn_row) == 2:
                 rows.append(btn_row)
@@ -466,15 +482,17 @@ async def handle_models_free(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await _show_model_picker(msg, models, context.user_data, "Free models on OpenRouter")
 
 
+async def handle_noop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Silently acknowledge section-header buttons that should not be interactive."""
+    await update.callback_query.answer()
+
+
 async def handle_model_pick_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Callback for model picker inline buttons (mpick:<idx> or mpick:cancel)."""
     query = update.callback_query
     await query.answer()
 
-    data = query.data  # "mpick:<idx>" or "mpick:cancel" or "noop"
-
-    if data == "noop":
-        return
+    data = query.data  # "mpick:<idx>" or "mpick:cancel"
 
     if data == "mpick:cancel":
         await query.edit_message_text("Cancelled.", reply_markup=InlineKeyboardMarkup([]))

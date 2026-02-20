@@ -24,7 +24,7 @@ load_dotenv()
 from .handlers import (
     handle_approve, handle_chatid, handle_message, handle_models,
     handle_models_free, handle_model_pick_callback, handle_newtopic,
-    handle_stop, handle_sync, handle_topics,
+    handle_noop_callback, handle_stop, handle_sync, handle_topics,
     handle_vps_status, handle_vps_restart,
     _sync_topics,
 )
@@ -107,6 +107,7 @@ def main() -> None:
     # Inline button callbacks
     app.add_handler(CallbackQueryHandler(handle_approve, pattern=r"^(approve|deny):"))
     app.add_handler(CallbackQueryHandler(handle_model_pick_callback, pattern=r"^mpick:"))
+    app.add_handler(CallbackQueryHandler(handle_noop_callback, pattern=r"^noop$"))
 
     # All other messages — route to tmux
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
