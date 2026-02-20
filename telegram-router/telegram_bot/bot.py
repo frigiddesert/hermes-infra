@@ -40,7 +40,7 @@ async def post_init(app) -> None:
         BotCommand("stop",        "Interrupt the Claude session for this topic"),
         BotCommand("interrupt",   "Alias for /stop"),
         BotCommand("models",      "Browse & switch OpenRouter models"),
-        BotCommand("models_free", "Pick from live free models"),
+        BotCommand("modelsfree", "Pick from live free models"),
         BotCommand("status",      "VPS health check"),
         BotCommand("restart",     "Restart VPS service: /restart [gateway|ollama|all]"),
     ])
@@ -84,7 +84,7 @@ def main() -> None:
     app.add_handler(CommandHandler("stop",        handle_stop))
     app.add_handler(CommandHandler("interrupt",   handle_stop))
     app.add_handler(CommandHandler("models",      handle_models))
-    app.add_handler(CommandHandler("models_free", handle_models_free))
+    app.add_handler(CommandHandler("modelsfree", handle_models_free))
     app.add_handler(CommandHandler("status",      handle_vps_status))
     app.add_handler(CommandHandler("restart",     handle_vps_restart))
 
