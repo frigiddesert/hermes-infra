@@ -15,13 +15,6 @@ from .project_router import ProjectRouter
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 VPS_SSH_HOST = os.getenv("VPS_SSH_HOST", "openclaw")
 
-# Curated free models list
-FREE_MODELS = [
-    "openrouter/stepfun/step-3.5-flash:free",
-    "openrouter/upstage/solar-pro-3:free",
-    "openrouter/qwen/qwq-32b:free",
-]
-
 INBOX_DIR = Path(os.getenv("INBOX_DIR", Path.home() / ".claude" / "inbox"))
 FORUM_ID = int(os.getenv("TELEGRAM_FORUM_ID", "0"))
 
@@ -266,24 +259,31 @@ async def handle_models(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def handle_models_free(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/models-free — Immediately switch to the best free model."""
+    """/models-free — List all free OpenRouter models and let user pick one."""
     msg = update.message
     if not msg:
         return
 
-    await msg.reply_text("⚡ Switching to free model mode...")
+    await msg.reply_text("🆓 Fetching free models from OpenRouter...")
 
-    success, output = _set_vps_model("openrouter/stepfun/step-3.5-flash:free")
-    if success:
-        await msg.reply_text(
-            "✅ Switched to *free model mode*\n"
-            "Primary: `stepfun/step-3.5-flash:free`\n"
-            "Fallbacks: `solar-pro-3:free`, `qwq-32b:free`\n\n"
-            "Use `/models kimi` to switch back to Kimi K2.5.",
-            parse_mode="Markdown",
-        )
-    else:
-        await msg.reply_text(f"❌ Failed to switch model:\n```\n{output[:500]}\n```", parse_mode="Markdown")
+    try:
+        models = await _fetch_openrouter_models("", free_only=True)
+    except Exception as e:
+        await msg.reply_text(f"❌ Error fetching models: {e}")
+        return
+
+    if not models:
+        await msg.reply_text("No free models found.")
+        return
+
+    context.user_data["models_results"] = [m.get("id") for m in models]
+    context.user_data["models_waiting"] = "pick"
+
+    await msg.reply_text(
+        f"*Free models on OpenRouter:*\n\n{_format_model_list(models)}\n\n"
+        f"Reply with a number (1–{len(models)}) to switch, or /cancel",
+        parse_mode="Markdown",
+    )
 
 
 async def handle_model_search_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
