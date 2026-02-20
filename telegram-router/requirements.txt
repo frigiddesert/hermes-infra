@@ -1,0 +1,6 @@
+python-telegram-bot==21.*
+psycopg2-binary
+asyncpg
+inotify
+python-dotenv
+requests

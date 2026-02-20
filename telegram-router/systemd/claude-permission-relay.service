@@ -1,0 +1,16 @@
+[Unit]
+Description=Claude Permission Relay (tool_use → Telegram approve/deny)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/eric/code/claude-telegram-router
+EnvironmentFile=/home/eric/code/claude-telegram-router/.env
+ExecStart=/home/eric/code/claude-telegram-router/.venv/bin/python -m scripts.permission_relay_v2
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

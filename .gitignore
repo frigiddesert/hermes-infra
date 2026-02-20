@@ -1,0 +1,25 @@
+# Secrets — never commit these
+.env
+*_token.json
+*_credentials.json
+google_oauth_client.json
+credentials/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Openclaw runtime state
+*.lock
+*.log
+sessions/
+canvas/
+
+# OS
+.DS_Store
+Thumbs.db

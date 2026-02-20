@@ -1,0 +1,17 @@
+[Unit]
+Description=Claude Telegram Router Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/eric/code/claude-telegram-router
+EnvironmentFile=/home/eric/code/claude-telegram-router/.env
+ExecStart=/home/eric/code/claude-telegram-router/.venv/bin/python -m telegram_bot.bot
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

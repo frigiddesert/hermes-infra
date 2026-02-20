@@ -1,0 +1,69 @@
+{
+  // openclaw-vps configuration — sanitized template
+  // Copy to ~/.openclaw/openclaw.json on the VPS and fill in secrets
+  // Real secrets live in VPS environment only, never in this repo
+
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "auth": {
+      "mode": "token",
+      "token": "GENERATE_WITH: openssl rand -hex 24"
+    }
+  },
+
+  "agents": {
+    "defaults": {
+      // Primary: Kimi K2.5 — fast, cheap, great reasoning
+      "model": {
+        "primary": "openrouter/moonshotai/kimi-k2.5",
+        "fallbacks": [
+          "openrouter/deepseek/deepseek-v3.2",
+          "openrouter/qwen/qwen3.5-plus-02-15"
+        ]
+      },
+      "memorySearch": {
+        "enabled": true,
+        "provider": "openai",
+        "remote": {
+          "baseUrl": "http://127.0.0.1:11434/v1",
+          "apiKey": "ollama"
+        }
+      }
+    }
+  },
+
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "botToken": "YOUR_TELEGRAM_BOT_TOKEN",
+      "dmPolicy": "allowlist",
+      "allowFrom": [YOUR_TELEGRAM_USER_ID],
+      "groupPolicy": "disabled",
+      "streamMode": "partial"
+    }
+  },
+
+  "tools": {
+    "web": {
+      "search": {
+        "enabled": true,
+        "provider": "brave",
+        "apiKey": "YOUR_BRAVE_API_KEY",
+        "maxResults": 8,
+        "timeoutSeconds": 30,
+        "cacheTtlMinutes": 15
+      }
+    }
+  },
+
+  "env": {
+    "OPENROUTER_API_KEY": "YOUR_OPENROUTER_API_KEY"
+  },
+
+  "plugins": {
+    "entries": {
+      "telegram": { "enabled": true }
+    }
+  }
+}
