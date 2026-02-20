@@ -12,6 +12,8 @@ from telegram.ext import ContextTypes
 
 from .project_router import ProjectRouter
 
+CLAUDE_PROJECTS_DIR = Path(os.getenv("CLAUDE_PROJECTS_DIR", Path.home() / ".claude" / "projects"))
+
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 VPS_SSH_HOST = os.getenv("VPS_SSH_HOST", "openclaw")
 CF_WORKER_URL = os.getenv("CF_WORKER_URL", "https://openclaw-watchdog.eric-c5f.workers.dev")
@@ -509,6 +511,131 @@ async def handle_model_pick_callback(update: Update, context: ContextTypes.DEFAU
 async def handle_model_search_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """No longer used for model picking (now buttons), kept for compatibility."""
     return False
+
+
+async def _sync_topics(bot, router: ProjectRouter, forum_id: int) -> tuple[list[str], list[str]]:
+    """
+    Scan CLAUDE_PROJECTS_DIR for project dirs. For each unmapped project,
+    create a Telegram forum topic and save the mapping.
+    Returns (created, skipped) lists of project names.
+    """
+    created, skipped = [], []
+    if not forum_id:
+        return created, skipped
+
+    if not CLAUDE_PROJECTS_DIR.exists():
+        return created, skipped
+
+    # Project dirs are named like "-home-eric-code-myproject" or "myproject"
+    for entry in sorted(CLAUDE_PROJECTS_DIR.iterdir()):
+        if not entry.is_dir():
+            continue
+        # Derive a human-readable project name from the dir name
+        dir_name = entry.name
+        # Strip leading dash-separated path components (openclaw convention)
+        # e.g. "-home-eric-code-myproject" → "myproject"
+        parts = [p for p in dir_name.lstrip("-").split("-") if p]
+        project_name = parts[-1] if parts else dir_name
+
+        # Check if already mapped
+        existing = await router.get_thread_from_project(project_name)
+        if existing:
+            skipped.append(project_name)
+            continue
+
+        # Also check by full dir name
+        existing_full = await router.get_thread_from_project(dir_name)
+        if existing_full:
+            skipped.append(project_name)
+            continue
+
+        try:
+            topic = await bot.create_forum_topic(chat_id=forum_id, name=project_name[:128])
+            await router.save_mapping(project_name, topic.message_thread_id)
+            created.append(project_name)
+        except Exception as e:
+            print(f"[handlers] Failed to create topic for {project_name}: {e}")
+            skipped.append(f"{project_name} (error: {e})")
+
+    return created, skipped
+
+
+async def handle_sync(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/sync — Scan Claude projects and create missing Telegram forum topics."""
+    msg = update.message
+    if not msg:
+        return
+
+    forum_id: int = context.bot_data.get("forum_id", 0)
+    router: ProjectRouter = context.bot_data["router"]
+
+    if not forum_id:
+        await msg.reply_text(
+            "⚠️ `TELEGRAM_FORUM_ID` not set — can't create topics.\n"
+            "Run /chatid in your forum group to find the ID.",
+            parse_mode="Markdown",
+        )
+        return
+
+    await msg.reply_text("🔍 Scanning Claude projects...")
+
+    created, skipped = await _sync_topics(context.bot, router, forum_id)
+
+    lines = []
+    if created:
+        lines.append(f"✅ Created {len(created)} topic(s):")
+        lines.extend(f"  • `{p}`" for p in created)
+    if skipped:
+        already = [s for s in skipped if "error" not in s]
+        errors = [s for s in skipped if "error" in s]
+        if already:
+            lines.append(f"⏭ {len(already)} already mapped.")
+        if errors:
+            lines.append(f"❌ {len(errors)} error(s):")
+            lines.extend(f"  • {e}" for e in errors)
+
+    if not created and not skipped:
+        lines.append("No project directories found in `CLAUDE_PROJECTS_DIR`.")
+
+    await msg.reply_text("\n".join(lines) or "Done.", parse_mode="Markdown")
+
+
+async def handle_newtopic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/newtopic <name> — Manually create a forum topic for a project."""
+    msg = update.message
+    if not msg:
+        return
+
+    forum_id: int = context.bot_data.get("forum_id", 0)
+    if not forum_id:
+        await msg.reply_text("⚠️ `TELEGRAM_FORUM_ID` not set.", parse_mode="Markdown")
+        return
+
+    args = context.args or []
+    if not args:
+        await msg.reply_text("Usage: `/newtopic <project-name>`", parse_mode="Markdown")
+        return
+
+    project_name = " ".join(args)
+    router: ProjectRouter = context.bot_data["router"]
+
+    existing = await router.get_thread_from_project(project_name)
+    if existing:
+        await msg.reply_text(
+            f"ℹ️ `{project_name}` already mapped to topic {existing}.",
+            parse_mode="Markdown",
+        )
+        return
+
+    try:
+        topic = await context.bot.create_forum_topic(chat_id=forum_id, name=project_name[:128])
+        await router.save_mapping(project_name, topic.message_thread_id)
+        await msg.reply_text(
+            f"✅ Created topic `{project_name}` (thread {topic.message_thread_id})",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        await msg.reply_text(f"❌ Failed: {e}")
 
 
 async def handle_approve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

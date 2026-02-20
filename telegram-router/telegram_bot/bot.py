@@ -23,8 +23,10 @@ load_dotenv()
 
 from .handlers import (
     handle_approve, handle_chatid, handle_message, handle_models,
-    handle_models_free, handle_model_pick_callback, handle_stop, handle_topics,
+    handle_models_free, handle_model_pick_callback, handle_newtopic,
+    handle_stop, handle_sync, handle_topics,
     handle_vps_status, handle_vps_restart,
+    _sync_topics,
 )
 from .project_router import ProjectRouter
 
@@ -37,14 +39,26 @@ async def post_init(app) -> None:
     await app.bot.set_my_commands([
         BotCommand("chatid",      "Show chat + thread IDs (for setup)"),
         BotCommand("topics",      "List all project → topic mappings"),
+        BotCommand("sync",        "Create forum topics for all unmapped Claude projects"),
+        BotCommand("newtopic",    "Create a forum topic: /newtopic <project-name>"),
         BotCommand("stop",        "Interrupt the Claude session for this topic"),
         BotCommand("interrupt",   "Alias for /stop"),
         BotCommand("models",      "Browse & switch OpenRouter models"),
-        BotCommand("modelsfree", "Pick from live free models"),
+        BotCommand("modelsfree",  "Pick from live free models"),
         BotCommand("status",      "VPS health check"),
         BotCommand("restart",     "Restart VPS service: /restart [gateway|ollama|all]"),
     ])
     print("[bot] ready — polling for messages")
+
+    # Auto-sync: create topics for any unmapped Claude projects on startup
+    forum_id: int = app.bot_data.get("forum_id", 0)
+    if forum_id:
+        try:
+            created, _ = await _sync_topics(app.bot, router, forum_id)
+            if created:
+                print(f"[bot] auto-sync created {len(created)} topic(s): {created}")
+        except Exception as e:
+            print(f"[bot] auto-sync skipped: {e}")
 
 
 async def post_shutdown(app) -> None:
@@ -81,10 +95,12 @@ def main() -> None:
     # Commands
     app.add_handler(CommandHandler("chatid",      handle_chatid))
     app.add_handler(CommandHandler("topics",      handle_topics))
+    app.add_handler(CommandHandler("sync",        handle_sync))
+    app.add_handler(CommandHandler("newtopic",    handle_newtopic))
     app.add_handler(CommandHandler("stop",        handle_stop))
     app.add_handler(CommandHandler("interrupt",   handle_stop))
     app.add_handler(CommandHandler("models",      handle_models))
-    app.add_handler(CommandHandler("modelsfree", handle_models_free))
+    app.add_handler(CommandHandler("modelsfree",  handle_models_free))
     app.add_handler(CommandHandler("status",      handle_vps_status))
     app.add_handler(CommandHandler("restart",     handle_vps_restart))
 
