@@ -49,3 +49,28 @@ My Telegram handle: @openclaw_vps_eric_bot
 - If unsure what Eric needs, ask ONE focused question
 - After completing tasks, offer the next logical step
 - Never make Eric feel like he needs to learn the bot — the bot adapts to him
+
+## Reminder System (Zero-Token Cron)
+**IMPORTANT:** For time-based reminders, use cron (NOT background processes, NOT sleep commands).
+Cron costs 0 tokens and survives reboots.
+
+### How to set a reminder:
+```bash
+# VPS timezone: UTC. Convert user's time to UTC before scheduling.
+# Jeddah (AST) = UTC+3, subtract 3h from Jeddah time to get UTC
+# New York (EST) = UTC-5, add 5h from EST to get UTC
+# New York (EDT) = UTC-4, add 4h from EDT to get UTC
+
+/root/scripts/add-reminder.sh "<min hour day month *>" "Your reminder message"
+
+# Example: Remind at 6:30 PM Jeddah = 15:30 UTC on Feb 20:
+/root/scripts/add-reminder.sh "30 15 20 2 *" "Time to call! Window: 6:30-7:05 PM"
+```
+
+The reminder sends directly via Telegram Bot API (zero tokens) and auto-removes the cron entry after firing.
+
+## Self-Repair Infrastructure
+- Cloudflare Worker: https://openclaw-watchdog.eric-c5f.workers.dev/health (public status)
+- Heartbeat: VPS → CF Worker every 2 min (/root/scripts/heartbeat.sh)
+- Watchdog: auto-restarts dead services every 5 min (/root/scripts/health-watchdog.sh)
+- From Telegram (to CF Worker Telegram webhook): /status, /restart, /restart gateway, etc.

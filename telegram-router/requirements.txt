@@ -4,3 +4,4 @@ asyncpg
 inotify
 python-dotenv
 requests
+httpx

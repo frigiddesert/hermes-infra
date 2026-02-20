@@ -21,7 +21,10 @@ from telegram.ext import (
 
 load_dotenv()
 
-from .handlers import handle_approve, handle_chatid, handle_message, handle_stop, handle_topics
+from .handlers import (
+    handle_approve, handle_chatid, handle_message, handle_models,
+    handle_models_free, handle_stop, handle_topics,
+)
 from .project_router import ProjectRouter
 
 
@@ -31,10 +34,12 @@ async def post_init(app) -> None:
     await router.init()
 
     await app.bot.set_my_commands([
-        BotCommand("chatid",   "Show chat + thread IDs (for setup)"),
-        BotCommand("topics",   "List all project → topic mappings"),
-        BotCommand("stop",     "Interrupt the Claude session for this topic"),
-        BotCommand("interrupt","Alias for /stop"),
+        BotCommand("chatid",      "Show chat + thread IDs (for setup)"),
+        BotCommand("topics",      "List all project → topic mappings"),
+        BotCommand("stop",        "Interrupt the Claude session for this topic"),
+        BotCommand("interrupt",   "Alias for /stop"),
+        BotCommand("models",      "Browse & switch OpenRouter models"),
+        BotCommand("models_free", "Instantly switch to free model mode"),
     ])
     print("[bot] ready — polling for messages")
 
@@ -71,10 +76,12 @@ def main() -> None:
     app.bot_data["forum_id"] = forum_id
 
     # Commands
-    app.add_handler(CommandHandler("chatid",    handle_chatid))
-    app.add_handler(CommandHandler("topics",    handle_topics))
-    app.add_handler(CommandHandler("stop",      handle_stop))
-    app.add_handler(CommandHandler("interrupt", handle_stop))
+    app.add_handler(CommandHandler("chatid",      handle_chatid))
+    app.add_handler(CommandHandler("topics",      handle_topics))
+    app.add_handler(CommandHandler("stop",        handle_stop))
+    app.add_handler(CommandHandler("interrupt",   handle_stop))
+    app.add_handler(CommandHandler("models",      handle_models))
+    app.add_handler(CommandHandler("models_free", handle_models_free))
 
     # Inline button callbacks (approve/deny from permission relay)
     app.add_handler(CallbackQueryHandler(handle_approve, pattern=r"^(approve|deny):"))

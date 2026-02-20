@@ -6,10 +6,21 @@ import os
 import subprocess
 from pathlib import Path
 
+import httpx
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from .project_router import ProjectRouter
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+VPS_SSH_HOST = os.getenv("VPS_SSH_HOST", "openclaw")
+
+# Curated free models list
+FREE_MODELS = [
+    "openrouter/stepfun/step-3.5-flash:free",
+    "openrouter/upstage/solar-pro-3:free",
+    "openrouter/qwen/qwq-32b:free",
+]
 
 INBOX_DIR = Path(os.getenv("INBOX_DIR", Path.home() / ".claude" / "inbox"))
 FORUM_ID = int(os.getenv("TELEGRAM_FORUM_ID", "0"))
@@ -132,9 +143,13 @@ async def handle_stop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Route incoming forum topic messages into the matching Claude tmux session."""
+    """Route incoming messages. Handles /models conversation state, then routes to Claude."""
     msg = update.message
     if not msg or not msg.text:
+        return
+
+    # Check if we're mid-conversation in the /models flow (works in DMs or forums)
+    if await handle_model_search_reply(update, context):
         return
 
     # Not in a forum topic — print IDs to help with setup
@@ -163,6 +178,185 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     inbox_file = INBOX_DIR / f"{project_name}.txt"
     inbox_file.write_text(msg.text)
     print(f"[handlers] → {project_name}: {msg.text[:80]}")
+
+
+async def _fetch_openrouter_models(search: str, free_only: bool = False, cheapest: bool = False) -> list[dict]:
+    """Fetch models from OpenRouter API, filter, and sort."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        headers = {}
+        if OPENROUTER_API_KEY:
+            headers["Authorization"] = f"Bearer {OPENROUTER_API_KEY}"
+        resp = await client.get("https://openrouter.ai/api/v1/models", headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+
+    models = data.get("data", [])
+
+    # Filter
+    if free_only:
+        models = [m for m in models if m.get("id", "").endswith(":free")]
+    elif search and search.lower() not in ("cheap", "cheapest", "free"):
+        q = search.lower()
+        models = [m for m in models if q in m.get("id", "").lower() or q in m.get("name", "").lower()]
+
+    # Sort
+    def prompt_price(m):
+        try:
+            return float(m.get("pricing", {}).get("prompt", 999))
+        except (TypeError, ValueError):
+            return 999.0
+
+    if cheapest or free_only:
+        models.sort(key=prompt_price)
+    else:
+        # Sort by relevance (exact id match first), then alphabetically
+        q = search.lower() if search else ""
+        models.sort(key=lambda m: (0 if q in m.get("id", "").lower() else 1, m.get("id", "")))
+
+    return models[:10]
+
+
+def _format_model_list(models: list[dict]) -> str:
+    lines = []
+    for i, m in enumerate(models, 1):
+        mid = m.get("id", "unknown")
+        name = m.get("name", mid)
+        try:
+            prompt_price = float(m.get("pricing", {}).get("prompt", 0))
+            if prompt_price == 0:
+                price_str = "FREE"
+            elif prompt_price < 0.000001:
+                price_str = f"${prompt_price * 1_000_000:.4f}/1M"
+            else:
+                price_str = f"${prompt_price * 1_000_000:.2f}/1M"
+        except (TypeError, ValueError):
+            price_str = "?"
+        lines.append(f"{i}. `{mid}` — {price_str}")
+    return "\n".join(lines) if lines else "No models found."
+
+
+def _set_vps_model(model_id: str) -> tuple[bool, str]:
+    """SSH to VPS and update the active model. Returns (success, message)."""
+    result = subprocess.run(
+        ["ssh", VPS_SSH_HOST, f"/root/scripts/set-model.sh '{model_id}'"],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode == 0:
+        return True, result.stdout.strip()
+    return False, result.stderr.strip() or result.stdout.strip()
+
+
+async def handle_models(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/models — Interactive OpenRouter model browser and switcher."""
+    msg = update.message
+    if not msg:
+        return
+
+    # Clear any previous model-search state
+    context.user_data.pop("models_results", None)
+    context.user_data["models_waiting"] = "search"
+
+    await msg.reply_text(
+        "🔍 *Model Browser*\n\n"
+        "Send a search term (e.g. `claude`, `kimi`, `qwen`)\n"
+        "or type `cheap` for the 10 least expensive\n"
+        "or type `free` for free-tier only",
+        parse_mode="Markdown",
+    )
+
+
+async def handle_models_free(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/models-free — Immediately switch to the best free model."""
+    msg = update.message
+    if not msg:
+        return
+
+    await msg.reply_text("⚡ Switching to free model mode...")
+
+    success, output = _set_vps_model("openrouter/stepfun/step-3.5-flash:free")
+    if success:
+        await msg.reply_text(
+            "✅ Switched to *free model mode*\n"
+            "Primary: `stepfun/step-3.5-flash:free`\n"
+            "Fallbacks: `solar-pro-3:free`, `qwq-32b:free`\n\n"
+            "Use `/models kimi` to switch back to Kimi K2.5.",
+            parse_mode="Markdown",
+        )
+    else:
+        await msg.reply_text(f"❌ Failed to switch model:\n```\n{output[:500]}\n```", parse_mode="Markdown")
+
+
+async def handle_model_search_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Handle multi-step /models conversation. Returns True if message was consumed."""
+    msg = update.message
+    if not msg or not msg.text:
+        return False
+
+    state = context.user_data.get("models_waiting")
+    if not state:
+        return False
+
+    text = msg.text.strip()
+
+    if state == "search":
+        # User sent a search term
+        context.user_data.pop("models_waiting", None)
+        await msg.reply_text(f"🔍 Searching for `{text}`...", parse_mode="Markdown")
+
+        free_only = text.lower() == "free"
+        cheapest = text.lower() in ("cheap", "cheapest")
+
+        try:
+            models = await _fetch_openrouter_models(text, free_only=free_only, cheapest=cheapest)
+        except Exception as e:
+            await msg.reply_text(f"❌ Error fetching models: {e}")
+            return True
+
+        if not models:
+            await msg.reply_text("No models found. Try a different search term.")
+            return True
+
+        context.user_data["models_results"] = [m.get("id") for m in models]
+        context.user_data["models_waiting"] = "pick"
+
+        label = "cheapest" if cheapest else ("free" if free_only else f'"{text}"')
+        await msg.reply_text(
+            f"*Models matching {label}:*\n\n{_format_model_list(models)}\n\n"
+            f"Reply with a number (1–{len(models)}) to switch, or /cancel",
+            parse_mode="Markdown",
+        )
+        return True
+
+    if state == "pick":
+        # User sent a number to pick a model
+        if text.lower() in ("/cancel", "cancel"):
+            context.user_data.pop("models_waiting", None)
+            context.user_data.pop("models_results", None)
+            await msg.reply_text("Cancelled.")
+            return True
+
+        results = context.user_data.get("models_results", [])
+        try:
+            idx = int(text) - 1
+            if not (0 <= idx < len(results)):
+                raise ValueError()
+        except ValueError:
+            await msg.reply_text(f"Please send a number between 1 and {len(results)}, or /cancel")
+            return True
+
+        model_id = results[idx]
+        context.user_data.pop("models_waiting", None)
+        context.user_data.pop("models_results", None)
+
+        await msg.reply_text(f"⚡ Switching to `{model_id}`...", parse_mode="Markdown")
+        success, output = _set_vps_model(model_id)
+        if success:
+            await msg.reply_text(f"✅ Active model: `{model_id}`", parse_mode="Markdown")
+        else:
+            await msg.reply_text(f"❌ Failed:\n```\n{output[:500]}\n```", parse_mode="Markdown")
+        return True
+
+    return False
 
 
 async def handle_approve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

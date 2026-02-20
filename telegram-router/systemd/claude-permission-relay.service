@@ -4,10 +4,11 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/eric/code/claude-telegram-router
-EnvironmentFile=/home/eric/code/claude-telegram-router/.env
-ExecStart=/home/eric/code/claude-telegram-router/.venv/bin/python -m scripts.permission_relay_v2
+WorkingDirectory=/home/eric/code/openclaw/telegram-router
+EnvironmentFile=/home/eric/code/openclaw/telegram-router/.env
+ExecStart=/home/eric/code/openclaw/telegram-router/.venv/bin/python -m scripts.permission_relay_v2
 Restart=always
+StartLimitIntervalSec=0
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
