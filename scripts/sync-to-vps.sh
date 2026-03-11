@@ -12,6 +12,12 @@ rsync -av --exclude='memory/' \
   "$VPS_HOST:$VPS_WORKSPACE/"
 
 echo ""
+echo "=== Syncing cron scripts to VPS ==="
+rsync -av --chmod=+x \
+  "$REPO_DIR/vps/cron-scripts/" \
+  "$VPS_HOST:/root/.openclaw/cron-scripts/"
+
+echo ""
 echo "=== Pulling latest from VPS ==="
 rsync -av \
   "$VPS_HOST:$VPS_WORKSPACE/MEMORY.md" \
