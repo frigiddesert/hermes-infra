@@ -2,13 +2,11 @@
 """sync-model-catalog.py — Daily model catalog sync from OpenRouter.
 
 Queries OpenRouter API, filters to affordable models (≤$3/M input tokens),
-updates:
-  1. openclaw.json agents.defaults.models — allowlist for Discord model picker
-  2. openclaw.json models.providers.openrouter.models — provider definitions
-  3. models.json — patches ALL openrouter model names with price labels
+registers them as sub-provider groups in openclaw.json so the Discord picker
+shows e.g. "or-openai", "or-google", "or-nvidia" as separate providers.
 
-Run with --patch-registry to only do step 3 (used by ExecStartPost).
-Run without flags for the full daily sync (steps 1-3 + gateway restart).
+Each sub-provider points to OpenRouter's API with the same key, but models
+are grouped for better Discord navigation.
 
 Filtering rules:
   - ≤ $3/M input cost, ≥ 32k context
@@ -19,11 +17,13 @@ Filtering rules:
 
 import json
 import sys
+import subprocess
+import time
 import urllib.request
+from collections import defaultdict
 from pathlib import Path
 
 CONFIG_PATH = Path("/root/.openclaw/openclaw.json")
-MODELS_JSON_PATH = Path("/root/.openclaw/agents/main/agent/models.json")
 OPENROUTER_API = "https://openrouter.ai/api/v1/models"
 MAX_INPUT_COST_PER_M = 3.0
 MIN_CONTEXT = 32_000
@@ -31,8 +31,8 @@ MIN_CONTEXT = 32_000
 SKIP_PROVIDERS = {"anthropic"}
 DIRECT_PROVIDERS = {"bailian", "gemini", "groq", "openai"}
 
-# Cache file so --patch-registry doesn't need to re-fetch OpenRouter
-PRICING_CACHE = Path("/root/.openclaw/openrouter-pricing.json")
+# Sub-provider prefix for OpenRouter groups in the config
+OR_PREFIX = "or-"
 
 
 def fetch_openrouter_models():
@@ -59,14 +59,6 @@ def make_label(base_name, input_per_m):
     return f"{base_name} {label}"
 
 
-def strip_price_label(name):
-    """Remove existing price label from a name."""
-    import re
-    name = re.sub(r'\s*\(\$[\d.]+/M\)\s*$', '', name)
-    name = re.sub(r'\s*\(Free\)\s*$', '', name)
-    return name.strip()
-
-
 def should_include(model_id, provider, input_per_m, context):
     if provider in SKIP_PROVIDERS:
         return False
@@ -81,78 +73,43 @@ def should_include(model_id, provider, input_per_m, context):
     return True
 
 
-def build_pricing_map(or_models):
-    """Build model_id -> pricing info map and cache it."""
-    pricing_map = {}
-    for m in or_models:
-        pricing = m.get("pricing", {})
-        input_per_m = price_per_million(pricing, "prompt")
-        pricing_map[m["id"]] = {
-            "input_per_m": input_per_m,
-            "name": m.get("name", m["id"]),
-            "context": m.get("context_length", 0),
-        }
-    # Cache for --patch-registry
-    PRICING_CACHE.write_text(json.dumps(pricing_map, indent=2) + "\n")
-    return pricing_map
+def sub_provider_key(or_provider_name):
+    """Convert OpenRouter sub-provider name to config provider key."""
+    return f"{OR_PREFIX}{or_provider_name}"
 
 
-def load_pricing_cache():
-    """Load cached pricing map."""
-    if not PRICING_CACHE.exists():
-        return None
-    return json.loads(PRICING_CACHE.read_text())
-
-
-def patch_registry(pricing_map):
-    """Patch models.json: inject price labels into all openrouter model names."""
-    if not MODELS_JSON_PATH.exists():
-        print("  models.json not found, skipping registry patch")
-        return 0
-
-    registry = json.loads(MODELS_JSON_PATH.read_text())
-    providers = registry.get("providers", {})
-    or_registry = providers.get("openrouter", {})
-    or_models = or_registry.get("models", [])
-
-    patched = 0
-    for entry in or_models:
-        model_id = entry.get("id", "")
-        if model_id not in pricing_map:
-            continue
-        info = pricing_map[model_id]
-        base_name = strip_price_label(entry.get("name", model_id))
-        new_name = make_label(base_name, info["input_per_m"])
-        if entry.get("name") != new_name:
-            entry["name"] = new_name
-            patched += 1
-
-    if patched > 0:
-        MODELS_JSON_PATH.write_text(json.dumps(registry, indent=2) + "\n")
-    print(f"  Registry: patched {patched}/{len(or_models)} model names")
-    return patched
-
-
-def full_sync():
-    """Full daily sync: fetch OpenRouter, update config, patch registry."""
+def main():
     print("Fetching OpenRouter model catalog...")
     or_models = fetch_openrouter_models()
     print(f"  {len(or_models)} models from OpenRouter")
 
-    pricing_map = build_pricing_map(or_models)
     cfg = json.load(CONFIG_PATH.open())
 
-    # Build provider model definitions
-    or_model_defs = []
-    or_allowlist_keys = []
+    # Get OpenRouter API key from existing config
+    or_config = cfg.get("models", {}).get("providers", {}).get("openrouter", {})
+    or_api_key = or_config.get("apiKey", "os.environ/OPENROUTER_API_KEY")
+    or_base_url = or_config.get("baseUrl", "https://openrouter.ai/api/v1")
+    or_api = or_config.get("api", "openai-completions")
+
+    # Group models by sub-provider
+    by_sub = defaultdict(list)
+    total_included = 0
 
     for m in or_models:
         model_id = m["id"]
-        provider = model_id.split("/")[0] if "/" in model_id else "unknown"
-        input_per_m = pricing_map[model_id]["input_per_m"]
+        # Sub-provider is first segment: "openai/gpt-5" -> "openai"
+        parts = model_id.split("/")
+        if len(parts) >= 2:
+            sub_prov = parts[0]
+        else:
+            sub_prov = "other"
+
+        pricing = m.get("pricing", {})
+        input_per_m = price_per_million(pricing, "prompt")
+        output_per_m = price_per_million(pricing, "completion")
         context = m.get("context_length", 0)
 
-        if not should_include(model_id, provider, input_per_m, context):
+        if not should_include(model_id, sub_prov, input_per_m, context):
             continue
 
         modalities = m.get("architecture", {}).get("input_modalities", [])
@@ -161,8 +118,6 @@ def full_sync():
             input_types.append("image")
 
         base_name = m.get("name", model_id)
-        pricing = m.get("pricing", {})
-        output_per_m = price_per_million(pricing, "completion")
         entry = {
             "id": model_id,
             "name": make_label(base_name, input_per_m),
@@ -179,33 +134,70 @@ def full_sync():
         if max_tokens and isinstance(max_tokens, int) and max_tokens > 0:
             entry["maxTokens"] = max_tokens
 
-        or_model_defs.append(entry)
-        or_allowlist_keys.append(f"openrouter/{model_id}")
+        by_sub[sub_prov].append(entry)
+        total_included += 1
 
-    print(f"  {len(or_model_defs)} models pass filters")
+    print(f"  {total_included} models across {len(by_sub)} sub-providers")
 
-    # Update openrouter provider models
-    or_provider = cfg.setdefault("models", {}).setdefault("providers", {}).setdefault("openrouter", {})
-    or_provider["models"] = or_model_defs
+    # Consolidate tiny providers (≤2 models) into "other"
+    MIN_GROUP_SIZE = 4
+    consolidated = {}
+    other_models = []
+    for sub_prov, models in by_sub.items():
+        if len(models) >= MIN_GROUP_SIZE:
+            consolidated[sub_prov] = models
+        else:
+            other_models.extend(models)
+    if other_models:
+        consolidated["other"] = other_models
+    by_sub = consolidated
+    print(f"  Consolidated to {len(by_sub)} provider groups ({len(other_models)} models in 'other')")
 
-    # Update allowlist
+    # --- Remove old or-* providers and openrouter models ---
+    providers = cfg.setdefault("models", {}).setdefault("providers", {})
+    old_or_keys = [k for k in providers if k.startswith(OR_PREFIX)]
+    for k in old_or_keys:
+        del providers[k]
+
+    # Keep the base openrouter provider (for API key reference) but clear its models
+    if "openrouter" in providers:
+        providers["openrouter"]["models"] = []
+
+    # --- Create sub-provider entries ---
+    for sub_prov, models in sorted(by_sub.items()):
+        key = sub_provider_key(sub_prov)
+        providers[key] = {
+            "baseUrl": or_base_url,
+            "apiKey": or_api_key,
+            "api": or_api,
+            "models": models,
+        }
+
+    # --- Update allowlist ---
     existing_models = cfg.get("agents", {}).get("defaults", {}).get("models", {})
     preserved = {k: v for k, v in existing_models.items() if k.split("/")[0] in DIRECT_PROVIDERS}
+
     merged = dict(preserved)
-    for key in or_allowlist_keys:
-        merged[key] = {}
+    for sub_prov, models in by_sub.items():
+        key = sub_provider_key(sub_prov)
+        for m in models:
+            merged[f"{key}/{m['id']}"] = {}
+
     cfg.setdefault("agents", {}).setdefault("defaults", {})["models"] = merged
 
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2) + "\n")
-    print(f"  Config: {len(preserved)} direct + {len(or_model_defs)} OpenRouter = {len(merged)} total")
 
-    # Restart gateway, wait for it to regenerate models.json, then patch
-    import subprocess
-    import time
+    # Print summary
+    print(f"  Config updated:")
+    print(f"    {len(preserved)} direct-provider models")
+    for sub_prov in sorted(by_sub.keys()):
+        print(f"    {sub_provider_key(sub_prov)}: {len(by_sub[sub_prov])} models")
+    print(f"    {len(merged)} total in allowlist")
+
+    # Restart gateway
     print("  Restarting gateway...")
     subprocess.run(["systemctl", "--user", "restart", "openclaw-gateway"], check=False)
 
-    # Wait for gateway to be ready (it regenerates models.json on startup)
     print("  Waiting for gateway to start...")
     for _ in range(30):
         time.sleep(2)
@@ -214,29 +206,13 @@ def full_sync():
             capture_output=True, text=True
         )
         if result.stdout.strip() == "active":
-            # Give it a moment to finish writing models.json
             time.sleep(3)
             break
     else:
         print("  WARNING: gateway did not become active in 60s")
 
-    # Now patch the freshly generated models.json
-    patch_registry(pricing_map)
-    print("  Done. Gateway is running with price-labeled models.")
-
-
-def patch_only():
-    """Post-start hook: patch models.json with cached pricing data."""
-    pricing_map = load_pricing_cache()
-    if not pricing_map:
-        print("  No pricing cache found, fetching fresh...")
-        or_models = fetch_openrouter_models()
-        pricing_map = build_pricing_map(or_models)
-    patch_registry(pricing_map)
+    print("  Done.")
 
 
 if __name__ == "__main__":
-    if "--patch-registry" in sys.argv:
-        patch_only()
-    else:
-        full_sync()
+    main()
