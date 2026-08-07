@@ -26,8 +26,27 @@ for pid in $(pgrep -f "agent-browser-chrome"); do
     # $pid, but every process in the tree shares the same --user-data-dir, so
     # match on that to kill the whole tree regardless of depth.
     user_data_dir=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | grep -m1 '^--user-data-dir=')
-    [ -z "$user_data_dir" ] && continue
 
-    echo "$(date -u +%FT%TZ) reaping orphaned chrome tree, top pid=$pid age=${age}s dir=$user_data_dir"
-    pkill -9 -f -- "$user_data_dir" 2>/dev/null
+    # This value comes from a process's own cmdline, which isn't trusted input
+    # in a root cron job — reject anything that isn't exactly Hermes's known
+    # tmp-dir naming scheme before using it for anything, and never hand it to
+    # a regex matcher like `pkill -f`/`pgrep -f` (a crafted cmdline could turn
+    # that into an unrelated-process kill run as root).
+    case "$user_data_dir" in
+        --user-data-dir=/tmp/agent-browser-chrome-????????-????-????-????-????????????) ;;
+        *) continue ;;
+    esac
+    dir_path="${user_data_dir#--user-data-dir=}"
+
+    echo "$(date -u +%FT%TZ) reaping orphaned chrome tree, top pid=$pid age=${age}s dir=$dir_path"
+
+    # Kill by PID, matched with a literal (non-regex) substring check against
+    # each candidate's own cmdline — not pkill -f, which would re-interpret
+    # dir_path as a regex against every process on the box.
+    for cpid in $(pgrep -f -- "agent-browser-chrome"); do
+        cmdline=$(tr '\0' ' ' < "/proc/$cpid/cmdline" 2>/dev/null)
+        case "$cmdline" in
+            *"--user-data-dir=$dir_path"*) kill -9 "$cpid" 2>/dev/null ;;
+        esac
+    done
 done
