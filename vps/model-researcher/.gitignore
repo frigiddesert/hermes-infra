@@ -1,0 +1,3 @@
+output/*
+!output/latest-briefing.md
+__pycache__/

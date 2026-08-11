@@ -1,0 +1,6 @@
+description: Headless, isolated Hermes backend for Heimdall, the production
+  monitoring platform. Diagnoses incidents from structured telemetry (error
+  events, stack traces, recent deploys) and returns machine-readable
+  root-cause analysis, and answers triage/classification requests. Never
+  publishes or mutates Heimdall data directly.
+description_auto: false

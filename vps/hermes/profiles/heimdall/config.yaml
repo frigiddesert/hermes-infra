@@ -1,0 +1,61 @@
+model:
+  default: auto/best-free
+  provider: custom:omniroute
+  api_mode: chat_completions
+providers:
+  omniroute:
+    name: OmniRoute
+    api: http://127.0.0.1:20128/v1
+    key_env: OMNIROUTE_API_KEY
+    transport: chat_completions
+    default_model: auto/best-free
+    models:
+      - auto/best-free
+      - auto/cheap
+      - auto/smart
+      - auto/best-reasoning
+      - auto/best-fast
+    discover_models: false
+fallback_providers:
+  - model: muse-spark-1.2-contributor
+    provider: Api.meta.ai
+  - model: deepseek-v4-flash
+    provider: deepseek
+agent:
+  max_turns: 30
+  gateway_timeout: 900
+  tool_use_enforcement: auto
+  reasoning_effort: medium
+prompt_caching:
+  cache_ttl: 5m
+  long_lived_prefix: true
+  long_lived_ttl: 1h
+openrouter:
+  response_cache: true
+  response_cache_ttl: 300
+  min_coding_score: 0.65
+context:
+  engine: compressor
+compression:
+  enabled: true
+  threshold: 0.95
+  target_ratio: 0.2
+web:
+  backend: tavily
+  search_backend: searxng
+  extract_backend: tavily
+memory:
+  memory_enabled: true
+  user_profile_enabled: false
+  write_approval: false
+gateway:
+  api_server:
+    max_concurrent_runs: 3
+    enabled: true
+    host: 127.0.0.1
+    port: 8660
+    model_name: heimdall
+    direct_model_requests: false
+platform_toolsets:
+  api_server:
+    - web

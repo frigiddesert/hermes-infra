@@ -1,0 +1,68 @@
+{
+  "contour-content": {
+    "description": "Content writing pipeline from contour.coffee website editor",
+    "events": [],
+    "secret": "<secret:webhook_contour-content>",
+    "prompt": "Content request from Contour Coffee website editor. Collection: {collection}. Action: {action}. Title: {title}. Instructions: {instructions}. Current content: {current_content}. Write the content, run humanizer pass (strip all 29 AI patterns from humanizer skill), then save to /root/workspace/contour-coffee-site/content/incoming/{collection}/{slug}.md with proper frontmatter. Report file path, word count, and humanizer changes.",
+    "skills": [],
+    "deliver": "origin",
+    "created_at": "2026-06-05T17:20:31Z"
+  },
+  "hermes-api": {
+    "description": "Generic API for external AI agents on Tailscale — query Hermes with structured requests",
+    "events": [],
+    "secret": "<secret:webhook_hermes-api>",
+    "prompt": "External agent request received.\n\nQuery: {query}\n\nContext: {context}\n\nSkills requested: {skills}\n\nCallback URL: {callback_url}\n\nProcess this request using the available tools and skills. After completing the work, deliver a clear summary of what was done and the results.",
+    "skills": [],
+    "deliver": "telegram",
+    "created_at": "2026-06-13T15:22:15Z",
+    "deliver_extra": {
+      "chat_id": "1514810057"
+    }
+  },
+  "heimdall-incidents": {
+    "description": "Heimdall incident feed — routes monitoring alerts by severity/tenant, alerts Eric, dispatches to Orchestra",
+    "events": [
+      "incident.new",
+      "incident.updated",
+      "incident.critical"
+    ],
+    "secret": "<secret:webhook_heimdall-incidents>",
+    "prompt": "You are the Heimdall Incident Router. Process the incoming incident payload:\n\n1. Parse the JSON payload — identify event type, incident id, severity, tenant, app_id, fingerprint, summary.\n2. If severity is 'critical': (a) send immediate Telegram alert to Eric summarizing the incident; (b) map the tenant to an Orchestra project name using the table in the heimdall-incident-router skill and dispatch to Claude Code via Orchestra.\n3. If severity is 'warning': log to session DB. Only auto-dispatch if count > 50 AND duration > 1h.\n4. If severity is 'info': log to session DB only.\n5. If the payload includes a callback_url, POST results back.\n6. Load the heimdall-incident-router skill for the full routing table, Orchestra dispatch format, and tenant mappings.",
+    "skills": [
+      "heimdall-incident-router",
+      "orchestra-interaction"
+    ],
+    "deliver": "telegram",
+    "created_at": "2026-06-14T15:33:28Z"
+  },
+  "heimdall-feedback": {
+    "description": "Heimdall feedback feed — surfaces firewalled user feedback to Eric with action buttons",
+    "events": [
+      "feedback.new"
+    ],
+    "secret": "<secret:webhook_heimdall-feedback>",
+    "prompt": "Route this Heimdall feedback item: present it to Eric on Telegram with action buttons and execute his choice via the Heimdall control API. Load the heimdall-feedback-router skill for the full procedure and security rules.",
+    "skills": [
+      "heimdall-feedback-router"
+    ],
+    "deliver": "telegram",
+    "created_at": "2026-06-15T06:02:03Z",
+    "deliver_extra": {
+      "chat_id": "1514810057"
+    }
+  },
+  "heimdall-diagnose": {
+    "description": "Heimdall diagnosis requests — diagnose from telemetry, post result back to the hub (always-up, cost-aware)",
+    "events": [
+      "incident.diagnose"
+    ],
+    "secret": "<secret:webhook_heimdall-diagnose>",
+    "prompt": "Diagnose this Heimdall incident from its telemetry and POST a concise root-cause + fix to the callback_url. Load the heimdall-diagnoser skill. Be cheap: a short reasoning pass, no repos/sub-agents.",
+    "skills": [
+      "heimdall-diagnoser"
+    ],
+    "deliver": "log",
+    "created_at": "2026-06-16T11:49:05Z"
+  }
+}
