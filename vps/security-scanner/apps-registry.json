@@ -1,0 +1,33 @@
+{
+  "_comment": "Snapshot of heimdall's `apps` table (id, name, repo) as of 2026-08-11 — used by cf_posture.py to recognize registered deployments by name. The hub has no read API for this yet (CONTROL plane doesn't expose GET /apps), so this is a manually-refreshed snapshot rather than a live call. Refresh via: query the D1 `apps` table (id, name, repo) and overwrite this file when apps are added/renamed.",
+  "apps": [
+    {"id": "9255-w-alameda", "name": "9255 W Alameda", "repo": "github.com/frigiddesert/9255-w-alameda"},
+    {"id": "Arctic-API-Google-Sheets-7shifts-Gcal", "name": "Arctic API ↔ Sheets/7shifts/GCal", "repo": "github.com/frigiddesert/Arctic-API-Google-Sheets-7shifts-Gcal"},
+    {"id": "Unified-mcp-servers", "name": "Unified MCP Servers", "repo": "github.com/frigiddesert/Unified-mcp-servers"},
+    {"id": "arctic-gateway", "name": "Arctic Reservations Gateway", "repo": "github.com/frigiddesert/arctic-gateway"},
+    {"id": "backblaze-server-backup", "name": "Backblaze Server Backup", "repo": "github.com/frigiddesert/backblaze-server-backup"},
+    {"id": "business-operating-system", "name": "Business Operating System (bos-erp)", "repo": "github.com/frigiddesert/business-operating-system"},
+    {"id": "cloudflare-usage-monitor", "name": "Cloudflare Usage Monitor", "repo": "github.com/frigiddesert/cloudflare"},
+    {"id": "contour-coffee-site", "name": "Contour Coffee — ecommerce storefront", "repo": "github.com/frigiddesert/contour-coffee-site"},
+    {"id": "contour-crm", "name": "Contour Coffee — CRM/ERP backend (workers, MCP, D1)", "repo": "github.com/frigiddesert/contour-crm"},
+    {"id": "contour-growth-engine", "name": "Contour — Autonomous Growth Engine", "repo": "github.com/frigiddesert/contour-growth-engine"},
+    {"id": "eric-bakken-brand", "name": "Eric Bakken — Personal Brand", "repo": "github.com/frigiddesert/eric-bakken-brand"},
+    {"id": "feedback-widget", "name": "Orchestra Feedback Widget", "repo": "github.com/frigiddesert/feedback-widget"},
+    {"id": "heimdall-platform", "name": "Heimdall — hub + Hermes AI backend", "repo": "github.com/frigiddesert/heimdall"},
+    {"id": "infra-pve-2", "name": "Infra — Proxmox PVE 2", "repo": "github.com/frigiddesert/infra-pve-2"},
+    {"id": "infra-racknerd", "name": "Infra — RackNerd", "repo": "github.com/frigiddesert/infra-racknerd"},
+    {"id": "kitchen-ordering", "name": "Kitchen Ordering", "repo": "github.com/frigiddesert/kitchen-ordering"},
+    {"id": "m365-email-filter-agent", "name": "M365 Email Filter Agent", "repo": "github.com/frigiddesert/m365-email-filter-agent"},
+    {"id": "orchestra-claude-runner", "name": "Orchestra — Telegram Claude Code Runner", "repo": "github.com/frigiddesert/Orchestra"},
+    {"id": "rim-arctic-evals", "name": "Rim Tours — Arctic Evals", "repo": "github.com/frigiddesert/rim-arctic-evals"},
+    {"id": "rim-leads-brevo-automation", "name": "Rim Tours — Leads/Brevo Automation", "repo": "github.com/frigiddesert/rim-leads-brevo-automation"},
+    {"id": "rim-menu-database", "name": "Rim Tours — Menu Database", "repo": "github.com/frigiddesert/rim-menu-database"},
+    {"id": "rim-staff-dashboard", "name": "Staff Dashboard & Time Clock (Omni portal)", "repo": "github.com/frigiddesert/rim-staff-dashboard"},
+    {"id": "rimtours-contact-center", "name": "Rim Tours — Contact Center", "repo": "github.com/frigiddesert/rimtours-contact-center"},
+    {"id": "rimtours-timecard", "name": "Rim Tours Timecard", "repo": "github.com/frigiddesert/rimtours-timecard"},
+    {"id": "rimtours-www", "name": "Rim Tours Website", "repo": "github.com/frigiddesert/rimtours-www"},
+    {"id": "village-roaster-portal", "name": "Village Roaster — Portal", "repo": "github.com/frigiddesert/village-roaster-portal"},
+    {"id": "voice-notes", "name": "Voice Notes", "repo": "github.com/frigiddesert/voice-notes"},
+    {"id": "vr-order-form-mar-2025", "name": "Village Roaster — Order Form", "repo": "github.com/frigiddesert/vr-order-form-mar-2025"}
+  ]
+}

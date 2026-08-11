@@ -1,0 +1,58 @@
+# Fleet dependency + secret scan targets (heimdall issue #24).
+#
+# Seeded from the heimdall apps registry (D1 `apps` table, repo slugs) plus repos with active
+# commits/deploys this sprint (2026-08). `app_id` is the heimdall app id events are attributed to —
+# null means the repo isn't a registered heimdall app (scanned anyway; events use the repo name as
+# appId). `dependabot: true` is just a hint — if the gh api call comes back 403/404 (disabled or
+# not accessible), dependency_scan.py falls back to shallow-clone + npm audit automatically.
+#
+# This is NOT general YAML — see config.py's parser. Keep it flat: repos: - key: value pairs only.
+repos:
+  - repo: heimdall
+    app_id: heimdall-platform
+    dependabot: true
+  - repo: feedback-widget
+    app_id: feedback-widget
+    dependabot: true
+  - repo: arctic-gateway
+    app_id: arctic-gateway
+    dependabot: true
+  - repo: Arctic-API-Google-Sheets-7shifts-Gcal
+    app_id: Arctic-API-Google-Sheets-7shifts-Gcal
+    dependabot: true
+  - repo: rim-staff-dashboard
+    app_id: rim-staff-dashboard
+    dependabot: true
+  - repo: rimtours-www
+    app_id: rimtours-www
+    dependabot: true
+  - repo: rimtours-timecard
+    app_id: rimtours-timecard
+    dependabot: true
+  - repo: rimtours-contact-center
+    app_id: rimtours-contact-center
+    dependabot: true
+  - repo: contour-crm
+    app_id: contour-crm
+    dependabot: true
+  - repo: contour-coffee-site
+    app_id: contour-coffee-site
+    dependabot: true
+  - repo: village-roaster-portal
+    app_id: village-roaster-portal
+    dependabot: true
+  - repo: business-operating-system
+    app_id: business-operating-system
+    dependabot: true
+  - repo: backblaze-server-backup
+    app_id: backblaze-server-backup
+    dependabot: true
+  - repo: Orchestra
+    app_id: orchestra-claude-runner
+    dependabot: true
+  - repo: cloudflare
+    app_id: cloudflare-usage-monitor
+    dependabot: true
+  - repo: openclaw-eric
+    app_id: null
+    dependabot: true

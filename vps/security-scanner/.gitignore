@@ -1,0 +1,6 @@
+state/*.json
+!state/.gitkeep
+bin/gitleaks
+.env
+*.pyc
+__pycache__/

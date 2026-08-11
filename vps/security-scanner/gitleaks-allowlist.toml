@@ -1,0 +1,19 @@
+# Extends gitleaks' default ruleset with an allowlist for known-safe patterns across the fleet:
+# redacted placeholders like <secret:NAME> that repos legitimately use in docs/config templates,
+# and sample/fixture files that intentionally contain fake credentials for tests.
+title = "heimdall security-scanner gitleaks allowlist"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "known-safe placeholders and fixtures"
+regexes = [
+  '''<secret:[A-Za-z0-9_]+>''',
+]
+paths = [
+  '''(^|/)fixtures/''',
+  '''(^|/)__fixtures__/''',
+  '''\.example($|\.)''',
+  '''(^|/)testdata/''',
+]
