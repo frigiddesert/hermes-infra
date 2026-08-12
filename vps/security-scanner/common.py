@@ -140,7 +140,9 @@ def post_ingest(events: list[dict[str, Any]], hub_url: str | None = None) -> boo
     body = json.dumps({"events": events}).encode("utf-8")
     req = urllib.request.Request(
         url, data=body, method="POST",
-        headers={"content-type": "application/json", "authorization": f"Bearer {key}"},
+        # Explicit User-Agent: the hub's Cloudflare zone blocks the default "Python-urllib/*" UA
+        # as a bot (returns 403 at the edge, before the Worker). A named UA gets through (200).
+        headers={"content-type": "application/json", "authorization": f"Bearer {key}", "user-agent": "heimdall-security-scanner/1.0"},
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
