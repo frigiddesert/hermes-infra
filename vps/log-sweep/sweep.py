@@ -176,6 +176,20 @@ def _journal_bootstrap_cursor() -> str | None:
     return None
 
 
+def _norm_msg(d: dict) -> dict:
+    """journald emits MESSAGE as a list of byte values when the log line isn't valid UTF-8.
+    Coerce it to a str once, at parse time, so every rule can treat MESSAGE as text."""
+    m = d.get("MESSAGE")
+    if isinstance(m, list):
+        try:
+            d["MESSAGE"] = bytes(m).decode("utf-8", "replace")
+        except Exception:
+            d["MESSAGE"] = " ".join(str(x) for x in m)
+    elif m is not None and not isinstance(m, str):
+        d["MESSAGE"] = str(m)
+    return d
+
+
 def read_journal(cursor: str | None, units: list[str], since_fallback: str = "30 minutes ago") -> tuple[list[dict], str | None]:
     """Returns (entries, new_cursor). new_cursor is None if nothing new (keep old cursor)."""
     cmd = ["journalctl", "-o", "json"]
@@ -197,7 +211,7 @@ def read_journal(cursor: str | None, units: list[str], since_fallback: str = "30
         if not line:
             continue
         try:
-            d = json.loads(line)
+            d = _norm_msg(json.loads(line))
         except Exception:
             continue
         entries.append(d)
@@ -225,7 +239,7 @@ def read_kernel_oom(cursor: str | None) -> tuple[list[dict], str | None]:
         if not line:
             continue
         try:
-            d = json.loads(line)
+            d = _norm_msg(json.loads(line))
         except Exception:
             continue
         entries.append(d)
