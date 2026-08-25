@@ -24,7 +24,7 @@ from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common
-
+from common import is_first_run, mark_first_run_done
 APP_ID = "openclaw-vps"
 STATE_PATH = Path(__file__).resolve().parent / "state" / "sweep_state.json"
 ENV_CANDIDATES = ["/root/pve-scanner/.env", "/root/pve-scanner.env"]

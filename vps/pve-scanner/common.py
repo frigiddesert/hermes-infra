@@ -192,6 +192,9 @@ def ssh_list_qm(host_ip: str) -> tuple[int, str, str]:
 def ssh_firewall_config(host_ip: str) -> tuple[int, str, str]:
     return ssh_run(host_ip, "pve-firewall compile --output-format json 2>/dev/null || pve-firewall compile")
 
+def ssh_authorized_keys(host_ip: str) -> tuple[int, str, str]:
+    return ssh_run(host_ip, "cat /root/.ssh/authorized_keys 2>/dev/null || echo ''")
+
 
 
 def fingerprint_keys(keys_text: str) -> list[str]:

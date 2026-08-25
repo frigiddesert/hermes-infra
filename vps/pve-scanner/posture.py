@@ -24,7 +24,7 @@ from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common
-
+from common import is_first_run, mark_first_run_done, fingerprint_keys
 APP_ID = "openclaw-vps"
 BASELINE_PATH = Path(__file__).resolve().parent / "posture-baseline.json"
 STATE_DIR = Path(__file__).resolve().parent / "state"
