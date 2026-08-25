@@ -1,0 +1,14 @@
+{
+  "pve-2": {
+    "containers": [],
+    "vms": [],
+    "firewall": [],
+    "authorized_keys_fps": []
+  },
+  "mosthutte": {
+    "containers": [],
+    "vms": [],
+    "firewall": [],
+    "authorized_keys_fps": []
+  }
+}

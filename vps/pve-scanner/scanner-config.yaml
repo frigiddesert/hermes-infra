@@ -1,0 +1,58 @@
+# PVE Scanner Configuration
+# All values can be overridden via environment variables
+
+# Hosts to scan (Tailscale IPs)
+hosts:
+  pve-2:
+    ip: "100.126.92.41"
+    description: "Primary Proxmox hypervisor"
+    units:
+      - ssh.service
+      - pveproxy.service
+      - pvedaemon.service
+      - pve-firewall.service
+    files:
+      - /var/log/pve/tasks/index
+      - /var/log/pve/firewall.log
+  mosthutte:
+    ip: "100.113.108.73"
+    description: "Secondary Proxmox host (Grubberg) — HAOS + Frigate"
+    units:
+      - ssh.service
+      - pveproxy.service
+      - pvedaemon.service
+      - pve-firewall.service
+    files:
+      - /var/log/pve/tasks/index
+      - /var/log/pve/firewall.log
+
+# SSH settings
+ssh:
+  user: "root"
+  timeout_seconds: 10
+  # Private key should be in /root/.ssh/id_ed25519 (or similar) on openclaw-vps
+
+# Sweep module (runs every ~30 min)
+sweep:
+  thresholds:
+    sshd_min_attempts: 10
+    sshd_min_ips: 3
+    crashloop_min_starts: 2
+    disk_pct_threshold: 90.0
+    error_spike_multiple: 5.0
+    error_spike_min_abs: 20
+    baseline_min_samples: 3
+    baseline_history_len: 48
+
+# Posture module (runs weekly)
+posture:
+  # No extra config — compares container/VM inventory, firewall, authorized_keys
+
+# First-run seeding (prevents alert floods on first execution)
+first_run:
+  page_cap: 5  # only the 5 most severe findings page; rest are seeded as known
+
+# Heimdall integration
+heimdall:
+  hub_url: "https://heimdall-hub.eric-c5f.workers.dev"
+  app_id: "openclaw-vps"
