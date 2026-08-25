@@ -25,7 +25,7 @@ class TestCommon:
 
     def test_make_event(self):
         evt = common.make_event("test-app", "auth_anomaly", "error", "Test title", "tech details", {"host": "pve-2"})
-        assert evt["app_id"] == "test-app"
+        assert evt["appId"] == "test-app"  # camelCase per contracts/src/event.ts
         assert evt["type"] == "auth_anomaly"
         assert evt["severity"] == "error"
         assert evt["title"] == "Test title"
@@ -33,7 +33,6 @@ class TestCommon:
         assert evt["context"]["host"] == "pve-2"
 
     def test_apply_first_run_seeding(self):
-        # Test non-first-run
         findings = [
             {"severity": "critical", "title": "crit"},
             {"severity": "error", "title": "err"},

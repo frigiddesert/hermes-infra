@@ -93,8 +93,9 @@ def _grep_env_file(path: Path, key: str) -> str | None:
 
 def make_event(app_id: str, event_type: str, severity: str, title: str,
                technical: str = "", context: dict[str, Any] | None = None) -> dict[str, Any]:
+    # Wire format is camelCase per contracts/src/event.ts (HeimdallEvent): appId, not app_id.
     return {
-        "app_id": app_id,
+        "appId": app_id,
         "env": "production",
         "commit": "pve-scanner",
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
